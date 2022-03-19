@@ -1,14 +1,15 @@
 # Import Packages
 
-import numpy as np
+import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
 
-import argparse
+from torch.utils.data import DataLoader
+from torchvision.datasets import ImageFolder
+from PIL import ImageFile
 
 def test(model, test_loader, device, criterion):
     '''
@@ -144,34 +145,75 @@ def create_data_loaders(train_dir, eval_dir, test_dir, train_batch_size, test_ba
     This is an optional function that you may or may not need to implement
     depending on whether you need to use data loaders or not
     '''
-    pass
+
+    # Training Image Processing (transformation, resizing, tensorization and normalization)
+    training_transform = transforms.Compose([
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    testing_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    train_data = ImageFolder(root=train_dir, transform=training_transform)
+    test_data = ImageFolder(root=test_dir, transform=testing_transform)
+    eval_data = ImageFolder(root=eval_dir, transform=testing_transform)
+
+    train_loader = DataLoader(train_data, train_batch_size, shuffle=True)
+    test_loader = DataLoader(test_data, test_batch_size, shuffle=True)
+    eval_loader = DataLoader(eval_data, test_batch_size, shuffle=True)
+
+    return train_loader, eval_loader, test_loader
 
 def main(args):
+
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    print(f'Log Entry: Train batch size:{args.train_batch_size}')
+    print(f'Log Entry: Test batch size:{args.batch_size}')
+    print(f'Log Entry: Learning Rate:{args.lr}')
+    print(f'Log Entry: Epochs:{args.epochs}')
+
     '''
     TODO: Initialize a model by calling the net function
     '''
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f'Running on {device}.')
+
     model=net()
+    model = model.to(device)
     
     '''
     TODO: Create your loss and optimizer
     '''
-    loss_criterion = None
-    optimizer = None
+    loss_criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adagrad(model.parameters(), lr=args.lr)
     
     '''
     TODO: Call the train function to start training your model
     Remember that you will need to set up a way to get training data from S3
     '''
-    model=train(model, train_loader, loss_criterion, optimizer)
+
+    train_loader, evaluation_loader, test_loader = create_data_loaders(args.train_dir, args.evaluation_dir,
+                                                                       args.test_dir, args.train_batch_size,
+                                                                       args.test_batch_size)
+
+    train(model, args.epochs, train_loader, evaluation_loader, loss_criterion, optimizer, device)
     
     '''
     TODO: Test the model to see its accuracy
     '''
-    test(model, test_loader, criterion)
+
+    test(model, test_loader, device, loss_criterion)
     
     '''
     TODO: Save the trained model
     '''
+    path = './benchmark_model'
     torch.save(model, path)
 
 if __name__=='__main__':
@@ -179,8 +221,43 @@ if __name__=='__main__':
     '''
     TODO: Specify all the hyperparameters you need to use to train your model.
     '''
+    parser.add_argument(
+        '--epochs',
+        type=int,
+        default=4,
+        metavar='N',
+        help='number of epochs for training (default:4)'
+    )
 
+    parser.add_argument(
+        '--lr',
+        type=float,
+        default=0.1,
+        metavar='N',
+        help='default learning rate for training (default:0.1)'
+    )
 
+    parser.add_argument(
+        '--train_batch_size',
+        type=int,
+        default=16,
+        metavar='N',
+        help='batch size for training (default:16)'
+    )
+
+    parser.add_argument(
+        '--test_batch_size',
+        type=int,
+        default=8,
+        metavar='N',
+        help='batch size for testing (default:8)'
+    )
+
+    # Container environment variables
+    parser.add_argument('--model-dir', type=str, default=os.environ["SM_MODEL_DIR"])
+    parser.add_argument('--train-dir', type=str, default=os.environ["SM_CHANNEL_TRAIN"])
+    parser.add_argument('--test-dir', type=str, default=os.environ["SM_CHANNEL_TEST"])
+    parser.add_argument('--evaluation-dir', type=str, default=os.environ["SM_CHANNEL_EVALUATION"])
 
     args=parser.parse_args()
     
