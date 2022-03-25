@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as models
 import torchvision.transforms as transforms
+import smdebug.pytorch as smd
 
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
@@ -55,6 +56,14 @@ def train(model, epochs, train_loader, evaluation_loader, criterion, optimizer, 
           data loaders for training and will get train the model
           Remember to include any debugging/profiling hooks that you might need
     '''
+    
+    # Create Hook
+    hook = smd.Hook.create_from_json_file()
+    
+    # Register Hooks
+    hook.register_module(model)
+    hook.register_loss(criterion)
+    
 
     loader = {'train': train_loader, 'evaluation': evaluation_loader} # Creation of loader to be used in iteration
     epochs = epochs # Defining number of epochs for training
@@ -64,11 +73,14 @@ def train(model, epochs, train_loader, evaluation_loader, criterion, optimizer, 
     for epoch in range(epochs): # Going over all epochs
         for phase in ['train', 'evaluation']: # Variation for training and evaluation phases
             print(f'Epoch: {epoch} / Phase: {phase}')
-
+            
+            # Sets model and hook to train and evaluation modes
             if phase == 'train':
                 model.train()
+                hook.set_mode(smd.modes.TRAIN)
             else:
                 model.eval()
+                hook.set_mode(smd.modes.EVAL)
 
             # Initialize cumulative variables for each epoch:
             accum_loss = 0
@@ -214,8 +226,9 @@ def main(args):
     '''
     TODO: Save the trained model
     '''
-    path = './benchmark_model'
-    torch.save(model, path)
+    
+    with open(os.path.join(args.model_dir, 'model.pth'), "wb") as f:
+        torch.save(model.state_dict(), f)
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser()

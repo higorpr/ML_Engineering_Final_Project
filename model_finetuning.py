@@ -138,6 +138,20 @@ def net():
     '''
 
     model = models.resnet50(pretrained=True)
+    
+    for param in model.parameters():
+        param.requires_grad = False
+        
+    num_features = model.fc.in_features
+    model.fc = nn.Sequential(
+        nn.Linear(num_features, 128),
+        nn.ReLU(),
+        nn.Linear(128,256),
+        nn.ReLU(),
+        nn.Linear(256,64),
+        nn.ReLU(),
+        nn.Linear(64,5)
+    )
 
     return model
 
